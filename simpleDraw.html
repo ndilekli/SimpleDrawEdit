@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width,user-scalable=no">
+    
+    <meta name="viewport" content="initial-scale=1, maximum-scale=1,user-scalable=no">
+    <title>Maps Toolbar</title>
+    
+    <link rel="stylesheet" href="https://js.arcgis.com/3.21/dijit/themes/nihilo/nihilo.css">
+    <link rel="stylesheet" href="https://js.arcgis.com/3.21/esri/css/esri.css">
+    <style>
+      html, body, #mainWindow {
+        font-family: sans-serif; 
+        height: 100%; 
+        width: 100%; 
+      }
+      html, body {
+        margin: 0; 
+        padding: 0;
+      }
+      #header {
+        height: 80px; 
+        overflow: auto;
+        padding: 0.5em;
+      }
+    </style>
+    
+    <script src="https://js.arcgis.com/3.21/"></script>
+    <script>
+      var map, toolbar, symbol, geomTask;
+
+      require([
+        "esri/map", 
+        "esri/toolbars/draw",
+        "esri/graphic",
+        "esri/layers/FeatureLayer",
+        "esri/dijit/AttributeInspector",
+        "dojo/_base/lang",
+        "dojo/_base/array",
+        "dojo/dom-construct",
+
+        "esri/symbols/SimpleMarkerSymbol",
+        "esri/symbols/SimpleLineSymbol",
+        "esri/symbols/SimpleFillSymbol",
+
+        "dojo/parser", "dijit/registry",
+
+        "dijit/layout/BorderContainer", "dijit/layout/ContentPane", 
+        "dijit/form/Button", "dijit/WidgetSet", "dojo/domReady!"
+      ], function(
+        Map, Draw, Graphic, FeatureLayer, AttributeInspector, lang, array, domConstruct,
+        SimpleMarkerSymbol, SimpleLineSymbol, SimpleFillSymbol,
+        parser, registry, BorderContainer, ContentPane, Button
+      ) {
+        parser.parse();
+
+        map = new Map("map", {
+          basemap: "streets",
+          center: [-15.469, 36.428],
+          zoom: 3
+        });
+
+        var operationsPointLayer = new FeatureLayer("https://services5.arcgis.com/lVkj5PBOw7tRmIPU/arcgis/rest/services/HSEC/FeatureServer/0", {
+          mode: FeatureLayer.MODE_ONDEMAND,
+          outFields: ["*"]
+        });   
+        //console.log(operationsPointLayer);
+
+        var layerInfos = [
+            {
+              'featureLayer': operationsPointLayer,
+              'showAttachments': false,
+              'isEditable': true
+
+            }
+        ];
+        //Initialize Attribute Inspector
+        var attInspector = new AttributeInspector({
+            layerInfos: layerInfos
+        }, domConstruct.create("div"));
+        var saveButton = new Button({ label: "Save", "class": "saveButton"},domConstruct.create("div"));
+        domConstruct.place(saveButton.domNode, attInspector.deleteBtn.domNode, "after");        
+        console.log(attInspector);       
+
+        map.addLayers([
+          operationsPointLayer
+        ]);
+
+
+
+        map.infoWindow.setContent(attInspector.domNode);   
+        map.infoWindow.resize(320, 400); 
+         
+        
+        map.on("load", createToolbar);
+
+        // loop through all dijits, connect onClick event
+        // listeners for buttons to activate drawing tools
+        registry.forEach(function(d) {
+          // d is a reference to a dijit
+          // could be a layout container or a button
+          if ( d.declaredClass === "dijit.form.Button" ) {
+            d.on("click", activateTool);
+          }
+        });
+
+        function activateTool() {
+          toolbar.activate(Draw.POINT);
+        }
+
+        function createToolbar(themap) {
+          toolbar = new Draw(map);
+          //toolbar.activate(Draw[tool]);
+          toolbar.on("draw-complete", addToMap);
+        }
+
+        var graphic;
+        var updateFeature;
+        var feature;
+
+        attInspector.on("delete",function(evt){
+          var feature = evt.feature;
+          feature.getLayer().applyEdits(null,null,[feature]);
+          map.infoWindow.hide();
+        });
+
+        saveButton.on("click", function() {
+            //console.log("save and close");
+
+            map.infoWindow.hide();
+        });    
+
+        attInspector.on("attribute-change", function(evt) {
+            //store the updates to apply when the save button is clicked
+            console.log(evt);
+            feature = evt.feature;
+            feature.attributes[evt.fieldName] = evt.fieldValue;
+            console.log(feature);
+            feature.getLayer().applyEdits(null, [feature], null, function (add, update, del) {  
+              //console.log("evt: ");
+              //console.log(evt);
+              map.infoWindow.show(evt.geometry, map.getInfoWindowAnchor(evt.geometry));
+              //console.log("objectId: " + update[0].objectId);  
+              array.forEach(update, function (a) {  
+                  //console.log("success: ");
+                  //console.log(a.success);  
+              });  
+              }, function (error) {  
+              //console.log(error);  
+            });          
+            //operationsPointLayer.applyEdits(null, [feature], null);            
+            //updateFeature.attributes[evt.fieldName] = evt.fieldValue;
+        });    
+  
+
+        function addToMap(evt) {
+          var symbol;
+          toolbar.deactivate();
+
+          var attr = {"status":2};                 
+
+          symbol = new SimpleMarkerSymbol();
+          graphic = new Graphic(evt.geometry, symbol, attr);
+          map.graphics.add(graphic);
+          //console.log("graphic: ");
+          //console.log(graphic);
+          //console.log("adding graphic to featurelayer");
+          operationsPointLayer.applyEdits([graphic], null, null, function (add, update, del) {  
+            //console.log("evt: ");
+            //console.log(evt);
+            map.infoWindow.show(evt.geometry, map.getInfoWindowAnchor(evt.geometry));
+            console.log("objectId: " + add[0].objectId);  
+            array.forEach(add, function (a) {  
+                //console.log("success: ");
+                //console.log(a.success);  
+            });  
+            }, function (error) {  
+            //console.log(error);  
+          });  
+         
+        }
+      });
+    </script>
+  </head>
+  <body class="nihilo">
+
+  <div id="mainWindow" data-dojo-type="dijit/layout/BorderContainer" data-dojo-props="design:'headline'">
+    <div id="header" data-dojo-type="dijit/layout/ContentPane" data-dojo-props="region:'top'">
+      <span>Draw:<br /></span>
+      <button data-dojo-type="dijit/form/Button">Point</button>
+    </div>
+    <div id="map" data-dojo-type="dijit/layout/ContentPane" data-dojo-props="region:'center'"></div>
+  </div>
+
+  </body>
+</html>
